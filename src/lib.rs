@@ -351,7 +351,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
         }
 
 
-        struct Shader {
+        pub struct Shader {
             module: Arc<ShaderModule>,
         }
 
