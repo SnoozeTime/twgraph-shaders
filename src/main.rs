@@ -24,7 +24,10 @@ mod vs {
 
 
         ],
-        push_constants: [4, 4, 12, 4],
+        push_constants: {
+            name: PushConstants,
+            ranges: [(color, 4), (color2, 4), (long_ass, 12), (color3, 4)],
+        }
     }
 }
 
