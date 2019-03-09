@@ -208,7 +208,7 @@ fn generate_interface(struct_name: Ident, elements: &Vec<InterfaceElement>) -> p
     let length = elements.len();
     quote!(
         #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
-        struct #struct_name;
+        pub struct #struct_name;
 
         unsafe impl ShaderInterfaceDef for #struct_name {
             type Iter = #iter_name;
@@ -219,7 +219,7 @@ fn generate_interface(struct_name: Ident, elements: &Vec<InterfaceElement>) -> p
         }
 
         #[derive(Debug, Copy, Clone)]
-        struct #iter_name(u16);
+        pub struct #iter_name(u16);
         impl Iterator for #iter_name {
             type Item = ShaderInterfaceDefEntry;
 
@@ -339,7 +339,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
 
         // This structure describes layout of this stage.
         #[derive(Debug, Copy, Clone)]
-        struct MainLayout(ShaderStages);
+        pub struct MainLayout(ShaderStages);
         unsafe impl PipelineLayoutDesc for MainLayout {
             // Number of descriptor sets it takes.
             fn num_sets(&self) -> usize { 0 }
