@@ -14,5 +14,5 @@ vulkano = "0.11"
 shaderc = "0.3"
 
 proc-macro2 = "0.4"
-quote = "0.6.11"
-syn = {version="0.15.28", features = ["full"]}
+quote = "0.6.3"
+syn = {version="0.15.22", features = ["full"]}
