@@ -12,9 +12,59 @@ use syn::parse::{Parse, ParseStream, Result};
 use std::fs::File;
 use std::io::Read;
 
+// TODO Whatever I use at the moment. Other to be implemented later :)
+#[derive(Debug, Clone, Copy)]
+enum ShaderKind {
+    Vertex,
+    Fragment,
+}
+
+impl ShaderKind {
+    
+    pub fn from_str(repr: &str) -> Self {
+        match repr {
+            "fragment" => ShaderKind::Fragment,
+            "vertex" => ShaderKind::Vertex,
+            _ => panic!(format!("Shader kind {} not supported yet.", repr))
+        }
+    }
+
+    pub fn get_shaderc_kind(&self) -> shaderc::ShaderKind {
+
+        match *self {
+            ShaderKind::Vertex => shaderc::ShaderKind::Vertex,
+            ShaderKind::Fragment => shaderc::ShaderKind::Fragment,
+        }
+    }
+
+
+    pub fn generate_shaderstage(&self) -> proc_macro2::TokenStream {
+
+        match *self {
+            ShaderKind::Vertex => {
+                quote!(ShaderStages { vertex: true, ..ShaderStages::none() })
+            },
+            ShaderKind::Fragment => {
+                quote!(ShaderStages { fragment: true, ..ShaderStages::none() })    
+            }
+        }
+    }
+
+    pub fn generate_graphic_shader_type(&self) -> proc_macro2::TokenStream {
+        match *self {
+            ShaderKind::Vertex => {
+                quote!(GraphicsShaderType::Vertex)
+            },
+            ShaderKind::Fragment => {
+                quote!(GraphicsShaderType::Fragment)    
+            }
+        }
+    }
+}
+
 struct MacroInput {
     path: String,
-    kind: String,
+    kind: ShaderKind,
     input_desc: Vec<InterfaceElement>,
     output_desc: Vec<InterfaceElement>,
 
@@ -56,7 +106,7 @@ impl Parse for MacroInput {
                     }
 
                     let kind_value: LitStr = input.parse()?;
-                    kind = Some(kind_value);
+                    kind = Some(ShaderKind::from_str(kind_value.value().as_str()));
                 },
                 "input" => {
                     let in_brackets;
@@ -95,18 +145,6 @@ impl Parse for MacroInput {
 
                     let pc: PushConstants = input.parse()?;
                     push_constants = Some(pc);
-                    //let in_brackets;
-                    //bracketed!(in_brackets in input);
-                    //while !in_brackets.is_empty() {
-
-                    //    let size: LitInt = in_brackets.parse()?;
-                    //    push_constants.push(size);
-
-                    //    if !in_brackets.is_empty() {
-                    //        in_brackets.parse::<Token![,]>()?;
-                    //    }
-                    //}
-
                 },
                 _ => panic!("Unexpected value"),
             }
@@ -117,7 +155,7 @@ impl Parse for MacroInput {
         }
 
         Ok(MacroInput {
-            kind: kind.unwrap().value(),
+            kind: kind.unwrap(),
             path: path.unwrap().value(),
             input_desc,
             output_desc,
@@ -396,7 +434,7 @@ fn generate_pc(pc: Option<PushConstants>) -> (proc_macro2::TokenStream, proc_mac
 
 }
 
-fn compile(path: String) -> Vec<u32> {
+fn compile(path: String, shader_kind: ShaderKind) -> Vec<u32> {
     let mut f = File::open(&path).unwrap();
     let mut content = String::new();
     f.read_to_string(&mut content).unwrap();
@@ -404,7 +442,7 @@ fn compile(path: String) -> Vec<u32> {
     let mut compiler = shaderc::Compiler::new().unwrap();
     compiler.compile_into_spirv(
         content.as_str(),
-        shaderc::ShaderKind::Fragment,
+        shader_kind.get_shaderc_kind(),
         &path, "main", None).unwrap().as_binary().to_vec()
 }
 
@@ -419,7 +457,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
         push_constants, ..} = syn::parse_macro_input!(input as MacroInput);
 
     // Compile to SPIRV :D
-    let spirv = compile(path.clone());
+    let spirv = compile(path.clone(), kind);
     let path = LitStr::new(&path, Span::call_site());
 
     let struct_name_in = Ident::new("MainInput", Span::call_site());
@@ -427,6 +465,19 @@ pub fn twshader(input: TokenStream) -> TokenStream {
     let struct_name_out = Ident::new("MainOutput", Span::call_site());
     let out_interface = generate_interface(struct_name_out.clone(), &output_desc);
     let (pc_impl, pc_struct_impl) = generate_pc(push_constants);
+
+    let shader_stage = kind.generate_shaderstage();
+    let graphic_shader_type = kind.generate_graphic_shader_type();
+
+    let shaderc_type = match kind.get_shaderc_kind() {
+        shaderc::ShaderKind::Vertex => {
+            Ident::new("Vertex", Span::call_site())
+        },
+        shaderc::ShaderKind::Fragment => {
+            Ident::new("Fragment", Span::call_site())
+        },
+        _ => panic!("Not supported yet."),
+    };
 
     let expanded = quote!(
         //use shaderc::{Compiler, CompileOptions};
@@ -488,8 +539,8 @@ pub fn twshader(input: TokenStream) -> TokenStream {
                         CStr::from_bytes_with_nul_unchecked(b"main\0"),
                         #struct_name_in,
                         #struct_name_out,
-                        MainLayout(ShaderStages { fragment: true, ..ShaderStages::none() }),
-                        GraphicsShaderType::Fragment
+                        MainLayout(#shader_stage),
+                        #graphic_shader_type
                     ) }
             }
 
@@ -502,7 +553,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
                 let mut compiler = shaderc::Compiler::new().unwrap();
                 let spirv = compiler.compile_into_spirv(
                     content.as_str(),
-                    shaderc::ShaderKind::Fragment,
+                    shaderc::ShaderKind::#shaderc_type,
                     #path, "main", None).unwrap();
 
                 let spirv = spirv.as_binary();

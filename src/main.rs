@@ -2,7 +2,7 @@
 mod vs {
     twgraph_shader::twshader!{
         path: "test.frag",
-        kind: "hi",
+        kind: "fragment",
         input: [
             // This is the position in 2d space of the GUI
             {
