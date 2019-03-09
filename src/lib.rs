@@ -338,13 +338,14 @@ fn generate_pc(pc: Option<PushConstants>) -> (proc_macro2::TokenStream, proc_mac
         let mut struct_content = vec![];
         for (idx, (field, size)) in pc.ranges.iter().enumerate() {
 
+            let size_in_bytes = size * 4;
             inner_desc.push(quote!(
 
                     if num == #idx {
 
                         return Some(PipelineLayoutDescPcRange {
                             offset: #offset,
-                            size: #size,
+                            size: #size_in_bytes,
                             stages: ShaderStages::all(),
                         });
                     }
@@ -354,7 +355,7 @@ fn generate_pc(pc: Option<PushConstants>) -> (proc_macro2::TokenStream, proc_mac
             struct_content.push(quote!(
                 pub #field: [f32; #size],
                     ));
-            offset += size;
+            offset += size_in_bytes;
         }
 
         let struct_name = pc.name;
