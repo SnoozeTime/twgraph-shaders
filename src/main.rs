@@ -27,7 +27,17 @@ mod vs {
         push_constants: {
             name: PushConstants,
             ranges: [(color, 4), (color2, 4), (long_ass, 12), (color3, 4)],
-        }
+        },
+        descriptors: [
+            {
+                name: UBO,
+                ty: Buffer,
+                data: [(model, "mat4"), (view, "mat4"), (proj, "mat4")],
+                binding: 0,
+                set: 0,
+            }
+            
+        ],
     }
 }
 

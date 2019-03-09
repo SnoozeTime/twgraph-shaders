@@ -12,6 +12,9 @@ use syn::parse::{Parse, ParseStream, Result};
 use std::fs::File;
 use std::io::Read;
 
+mod descriptor;
+use crate::descriptor::{generate_descriptor_layout, DescriptorInput, DescriptorType};
+
 // TODO Whatever I use at the moment. Other to be implemented later :)
 #[derive(Debug, Clone, Copy)]
 enum ShaderKind {
@@ -70,7 +73,7 @@ struct MacroInput {
 
     // The size of each push constant range.
     push_constants: Option<PushConstants>,
-    descriptors: Vec<String>,
+    descriptors: Vec<DescriptorInput>,
 }
 
 impl Parse for MacroInput {
@@ -146,6 +149,18 @@ impl Parse for MacroInput {
                     let pc: PushConstants = input.parse()?;
                     push_constants = Some(pc);
                 },
+                "descriptors" => {
+                    let in_brackets;
+                    bracketed!(in_brackets in input);
+
+                    while !in_brackets.is_empty() {
+                        descriptors.push(in_brackets.parse::<DescriptorInput>()?);
+                        if !in_brackets.is_empty() {
+                            in_brackets.parse::<Token![,]>()?;
+                        }
+                    }
+
+                },
                 _ => panic!("Unexpected value"),
             }
 
@@ -212,7 +227,7 @@ impl Parse for InterfaceElement {
         Ok(Self {
             format: format.unwrap(),
             name: name.unwrap(),
-        })
+         })
     }
 }
 
@@ -454,7 +469,8 @@ pub fn twshader(input: TokenStream) -> TokenStream {
         kind,
         input_desc,
         output_desc,
-        push_constants, ..} = syn::parse_macro_input!(input as MacroInput);
+        push_constants,
+        descriptors } = syn::parse_macro_input!(input as MacroInput);
 
     // Compile to SPIRV :D
     let spirv = compile(path.clone(), kind);
@@ -465,6 +481,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
     let struct_name_out = Ident::new("MainOutput", Span::call_site());
     let out_interface = generate_interface(struct_name_out.clone(), &output_desc);
     let (pc_impl, pc_struct_impl) = generate_pc(push_constants);
+    let (desc_impl, desc_struct_impl) = generate_descriptor_layout(descriptors);
 
     let shader_stage = kind.generate_shaderstage();
     let graphic_shader_type = kind.generate_graphic_shader_type();
@@ -485,7 +502,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
         use std::io::Read;
         use vulkano::format::Format;
         use std::borrow::Cow;
-        use vulkano::descriptor::descriptor::DescriptorDesc;
+        use vulkano::descriptor::descriptor::{DescriptorDescTy, DescriptorDesc, DescriptorBufferDesc};
         use std::ffi::CStr;
         use vulkano::pipeline::shader::{GraphicsShaderType, ShaderInterfaceDef, ShaderInterfaceDefEntry, ShaderModule};
         use vulkano::descriptor::descriptor::ShaderStages;
@@ -500,17 +517,12 @@ pub fn twshader(input: TokenStream) -> TokenStream {
         #in_interface
         #out_interface
 
-
         // This structure describes layout of this stage.
         #[derive(Debug, Copy, Clone)]
         pub struct MainLayout(ShaderStages);
         unsafe impl PipelineLayoutDesc for MainLayout {
             // Number of descriptor sets it takes.
-            fn num_sets(&self) -> usize { 0 }
-            // Number of entries (bindings) in each set.
-            fn num_bindings_in_set(&self, _set: usize) -> Option<usize> { None }
-            // Descriptor descriptions.
-            fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> { None }
+            #desc_impl
             #pc_impl
         }
 
@@ -568,6 +580,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
 
         pub mod ty {
             #pc_struct_impl
+            #desc_struct_impl
         }
 
 
