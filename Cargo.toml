@@ -1,0 +1,18 @@
+[package]
+name = "twgraph-shader"
+version = "0.1.0"
+authors = ["Benoit Eudier <benoit.eudier@gmail.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+vulkano = "0.11"
+
+# Compile glsl to spirv
+shaderc = "0.3"
+
+proc-macro2 = "0.4"
+quote = "0.6.11"
+syn = {version="0.15.28", features = ["full"]}
