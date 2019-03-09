@@ -7,18 +7,19 @@ extern crate quote;
 
 use proc_macro::TokenStream;
 use proc_macro2::Span;
-use syn::{parse_macro_input, parse_quote, Expr, Ident, ItemFn, Local, Pat, Stmt, Token, LitStr, bracketed, braced};
+use syn::{Ident, LitInt, Token, LitStr, bracketed, braced};
 use syn::parse::{Parse, ParseStream, Result};
 use std::fs::File;
 use std::io::Read;
-use vulkano::format::Format;
 
 struct MacroInput {
     path: String,
     kind: String,
     input_desc: Vec<InterfaceElement>,
     output_desc: Vec<InterfaceElement>,
-    push_constants: Vec<String>,
+
+    // The size of each push constant range.
+    push_constants: Vec<LitInt>,
     descriptors: Vec<String>,
 }
 
@@ -86,11 +87,25 @@ impl Parse for MacroInput {
                         }
                     }
                 },
+                "push_constants" => {
+                    let in_brackets;
+                    bracketed!(in_brackets in input);
+                    while !in_brackets.is_empty() {
+
+                        let size: LitInt = in_brackets.parse()?;
+                        push_constants.push(size);
+
+                        if !in_brackets.is_empty() {
+                            in_brackets.parse::<Token![,]>()?;
+                        }
+                    }
+
+                },
                 _ => panic!("Unexpected value"),
             }
 
             if !input.is_empty() {
-                input.parse::<Token![,]>();
+                input.parse::<Token![,]>()?;
             }
         }
 
@@ -155,6 +170,8 @@ impl Parse for InterfaceElement {
         })
     }
 }
+
+
 
 fn generate_interface(struct_name: Ident, elements: &Vec<InterfaceElement>) -> proc_macro2::TokenStream {
 
@@ -223,13 +240,55 @@ fn generate_interface(struct_name: Ident, elements: &Vec<InterfaceElement>) -> p
         )
 }
 
+
+fn generate_pc(sizes: Vec<LitInt>) -> proc_macro2::TokenStream {
+
+    let length = sizes.len();
+
+    let mut inner_desc = vec![];
+    let mut offset = 0usize;
+    for (idx, size) in sizes.iter().enumerate() {
+
+        let size = size.value() as usize;
+
+        inner_desc.push(quote!(
+
+                if num == #idx {
+
+                    return Some(PipelineLayoutDescPcRange {
+                        offset: #offset,
+                        size: #size,
+                        stages: ShaderStages::all(),
+                    });
+                }
+
+        ));
+
+        offset += size;
+    }
+
+    quote!(
+        // Number of push constants ranges (think: number of push constants).
+        fn num_push_constants_ranges(&self) -> usize { #length }
+        // Each push constant range in memory.
+        fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> { 
+
+
+            #( #inner_desc )*
+
+            None
+        }
+    )
+
+
+}
+
 fn compile(path: String) -> Vec<u32> {
     let mut f = File::open(&path).unwrap();
     let mut content = String::new();
     f.read_to_string(&mut content).unwrap();
 
     let mut compiler = shaderc::Compiler::new().unwrap();
-    let mut options = shaderc::CompileOptions::new().unwrap();
     compiler.compile_into_spirv(
         content.as_str(),
         shaderc::ShaderKind::Fragment,
@@ -243,7 +302,8 @@ pub fn twshader(input: TokenStream) -> TokenStream {
         path,
         kind,
         input_desc,
-        output_desc, ..} = syn::parse_macro_input!(input as MacroInput);
+        output_desc,
+        push_constants, ..} = syn::parse_macro_input!(input as MacroInput);
 
     // Compile to SPIRV :D
     let spirv = compile(path.clone());
@@ -253,6 +313,8 @@ pub fn twshader(input: TokenStream) -> TokenStream {
     let in_interface = generate_interface(struct_name_in.clone(), &input_desc);
     let struct_name_out = Ident::new("MainOutput", Span::call_site());
     let out_interface = generate_interface(struct_name_out.clone(), &output_desc);
+    let pc_impl = generate_pc(push_constants);
+
     let expanded = quote!(
         //use shaderc::{Compiler, CompileOptions};
         use std::fs::File;
@@ -285,12 +347,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
             fn num_bindings_in_set(&self, _set: usize) -> Option<usize> { None }
             // Descriptor descriptions.
             fn descriptor(&self, _set: usize, _binding: usize) -> Option<DescriptorDesc> { None }
-            // Number of push constants ranges (think: number of push constants).
-            fn num_push_constants_ranges(&self) -> usize { 0 }
-            // Each push constant range in memory.
-            fn push_constants_range(&self, num: usize) -> Option<PipelineLayoutDescPcRange> { 
-                None 
-            }
+            #pc_impl
         }
 
 
@@ -330,12 +387,11 @@ pub fn twshader(input: TokenStream) -> TokenStream {
                 f.read_to_string(&mut content)?;
 
                 let mut compiler = shaderc::Compiler::new().unwrap();
-                let mut options = shaderc::CompileOptions::new().unwrap();
                 let spirv = compiler.compile_into_spirv(
                     content.as_str(),
                     shaderc::ShaderKind::Fragment,
                     #path, "main", None).unwrap();
-                
+
                 let spirv = spirv.as_binary();
 
                 //// then, change the module.

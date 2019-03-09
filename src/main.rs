@@ -24,6 +24,7 @@ mod vs {
 
 
         ],
+        push_constants: [4, 4, 12, 4],
     }
 }
 
