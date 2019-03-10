@@ -144,8 +144,12 @@ pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (p
     // first let's order by set and binding.
     // I'm tired, don't judge.
     let mut bindings_per_set = HashMap::new();
+    let mut highest_set = 0;
     for desc in descriptor_inputs.iter() {
 
+        if desc.set > highest_set {
+            highest_set = desc.set;
+        }
         if !bindings_per_set.contains_key(&desc.set) {
             bindings_per_set.insert(desc.set, HashSet::new());
         }
@@ -155,15 +159,20 @@ pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (p
             .insert(desc.binding);
     }
 
-    let num_set = bindings_per_set.len();
+    let num_set = highest_set+1;
 
     let mut num_bindings = vec![];
-    for (set, bindings) in &bindings_per_set {
-
-        let binding_length = bindings.len();
-        num_bindings.push(quote!(
+    for set in 0..num_set {
+        num_bindings.push(if let Some(ref bindings) = &bindings_per_set.get(&set) {
+           let binding_length = bindings.len();
+           quote!(
                 #set => Some(#binding_length),
-                ));
+               )
+        } else {
+            quote!(
+                #set => Some(0),
+                )
+        });
     }
 
     let mut descriptor_desc = vec![];

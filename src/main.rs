@@ -40,7 +40,7 @@ mod vs {
                 name: Texture,
                 ty: SampledImage,
                 binding: 0,
-                set: 1,
+                set: 2,
             }
             
         ],
