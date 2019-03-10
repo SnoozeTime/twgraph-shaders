@@ -4,7 +4,7 @@ use syn::parse::{Parse, ParseStream, Result};
 
 pub enum DescriptorType {
     Buffer(BufferData),
-    Image,
+    SampledImage,
 }
 
 pub struct BufferData {
@@ -123,48 +123,23 @@ impl Parse for DescriptorInput {
             }
         }
 
-        let ty = match ty_str.unwrap().to_string().as_ref() {
-            "Buffer" => DescriptorType::Buffer(data.unwrap()),
+        let ty = match ty_str.expect("Could not find uniform type").to_string().as_ref() {
+            "Buffer" => DescriptorType::Buffer(data.expect("Could not find uniform buffer data")),
+            "SampledImage" => DescriptorType::SampledImage,
             _ => panic!("Descriptor type not supported"),
         };
 
         Ok(Self {
-            name: name.unwrap(),
+            name: name.expect("Could not find descriptor name"),
             ty,
-            binding: binding.unwrap(),
-            set: set.unwrap()
+            binding: binding.expect("could not find descriptor binding"),
+            set: set.expect("Could not find descriptor set"),
         })
     }
 }
 
 
 pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
-    /*
-     *fn num_sets(&self) -> usize {
-     1usize
-     }
-     fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-     match set {
-     0usize => Some(1usize),
-     _ => None,
-     }
-     }
-     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-     match (set, binding) {
-     (0usize, 0usize) => Some(DescriptorDesc {
-     ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-     dynamic: Some(false),
-     storage: false,
-     }),
-     array_count: 1u32,
-     stages: self.0.clone(),
-     readonly: true,
-     }),
-     _ => None,
-     }
-     }
-     *
-     * */
 
     // first let's order by set and binding.
     // I'm tired, don't judge.
@@ -175,7 +150,9 @@ pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (p
             bindings_per_set.insert(desc.set, HashSet::new());
         }
 
-        bindings_per_set.get_mut(&desc.set).unwrap().insert(desc.binding);
+        bindings_per_set.get_mut(&desc.set)
+            .expect(&format!("Cannot find HashSet for set: {}", desc.set))
+            .insert(desc.binding);
     }
 
     let num_set = bindings_per_set.len();
@@ -195,13 +172,32 @@ pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (p
 
         let set = desc.set;
         let binding = desc.binding;
+
+        let ty = match &desc.ty {
+            DescriptorType::Buffer(_) => {
+                quote!(
+                    DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                        dynamic: Some(false),
+                        storage: false,
+                    })
+                )
+            },
+            DescriptorType::SampledImage => {
+                quote!(
+                    DescriptorDescTy::CombinedImageSampler(DescriptorImageDesc {
+                        sampled: true,
+                        dimensions: DescriptorImageDescDimensions::TwoDimensional,
+                        format: None,
+                        multisampled: false,
+                        array_layers: DescriptorImageDescArray::NonArrayed,
+                    })
+                )
+            },
+        };
         descriptor_desc.push(quote!(
 
                 (#set, #binding) => Some(DescriptorDesc {
-                    ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                        dynamic: Some(false),
-                        storage: false,
-                    }),
+                    ty: #ty,
                     array_count: 1u32,
                     stages: self.0.clone(),
                     readonly: true,
@@ -212,50 +208,52 @@ pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (p
         let mut fields = vec![];
         if let DescriptorType::Buffer(BufferData {data}) = &desc.ty {
             for (field_name, field_ty) in data {
-               // ident and string.
-               match field_ty.as_ref() {
-                "vec2" => {
-                    fields.push(quote!(
-                        pub #field_name: [f32; 2],
-                    ));
-                },
-                "vec3" => {
-                    fields.push(quote!(
-                        pub #field_name: [f32; 3],
-                    ));
-                },
-                "vec4" => {
-                    fields.push(quote!(
-                        pub #field_name: [f32; 4],
-                    ));
-                },
-                "mat2" => {
-                    fields.push(quote!(
-                        pub #field_name: [[f32; 2]; 2],
-                    ));
-                },
-                "mat3" => {
-                    fields.push(quote!(
-                        pub #field_name: [[f32; 3]; 3],
-                    ));
-                },
-                "mat4" => {
-                    fields.push(quote!(
-                        pub #field_name: [[f32; 4]; 4],
-                    ));
-                },
-                x => panic!(format!("Uniform field type {} not supported yet", x)),
-               }
+                // ident and string.
+                match field_ty.as_ref() {
+                    "vec2" => {
+                        fields.push(quote!(
+                                pub #field_name: [f32; 2],
+                                ));
+                    },
+                    "vec3" => {
+                        fields.push(quote!(
+                                pub #field_name: [f32; 3],
+                                ));
+                    },
+                    "vec4" => {
+                        fields.push(quote!(
+                                pub #field_name: [f32; 4],
+                                ));
+                    },
+                    "mat2" => {
+                        fields.push(quote!(
+                                pub #field_name: [[f32; 2]; 2],
+                                ));
+                    },
+                    "mat3" => {
+                        fields.push(quote!(
+                                pub #field_name: [[f32; 3]; 3],
+                                ));
+                    },
+                    "mat4" => {
+                        fields.push(quote!(
+                                pub #field_name: [[f32; 4]; 4],
+                                ));
+                    },
+                    x => panic!(format!("Uniform field type {} not supported yet", x)),
+                }
             }
         }
 
-        descriptor_structs.push(quote!(
-                #[repr(C)]
-                #[derive(Debug, Clone, Copy)]
-                pub struct #name {
-                    #( #fields )*
-                }
-        ));
+        if !fields.is_empty() {
+            descriptor_structs.push(quote!(
+                    #[repr(C)]
+                    #[derive(Debug, Clone, Copy)]
+                    pub struct #name {
+                        #( #fields )*
+                    }
+            ));
+        }
     }
 
 

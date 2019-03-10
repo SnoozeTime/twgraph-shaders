@@ -35,6 +35,12 @@ mod vs {
                 data: [(model, "mat4"), (view, "mat4"), (proj, "mat4")],
                 binding: 0,
                 set: 0,
+            },
+            {
+                name: Texture,
+                ty: SampledImage,
+                binding: 0,
+                set: 1,
             }
             
         ],

@@ -170,8 +170,8 @@ impl Parse for MacroInput {
         }
 
         Ok(MacroInput {
-            kind: kind.unwrap(),
-            path: path.unwrap().value(),
+            kind: kind.expect("Cannot find shader kind"),
+            path: path.expect("Cannot find shader path").value(),
             input_desc,
             output_desc,
             push_constants,
@@ -225,8 +225,8 @@ impl Parse for InterfaceElement {
         }
 
         Ok(Self {
-            format: format.unwrap(),
-            name: name.unwrap(),
+            format: format.expect("Cannot find Shader interface format"),
+            name: name.expect("Cannot find shader interface name"),
          })
     }
 }
@@ -306,8 +306,8 @@ impl Parse for PushConstants {
         }
 
         Ok(PushConstants {
-            name: name.unwrap(),
-            ranges: ranges.unwrap(),
+            name: name.expect("Cannot find push constants name"),
+            ranges: ranges.expect("Cannot find push constants ranges"),
         })
 
     }
@@ -502,7 +502,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
         use std::io::Read;
         use vulkano::format::Format;
         use std::borrow::Cow;
-        use vulkano::descriptor::descriptor::{DescriptorDescTy, DescriptorDesc, DescriptorBufferDesc};
+        use vulkano::descriptor::descriptor::{DescriptorDescTy, DescriptorDesc, DescriptorBufferDesc, DescriptorImageDesc, DescriptorImageDescArray, DescriptorImageDescDimensions};
         use std::ffi::CStr;
         use vulkano::pipeline::shader::{GraphicsShaderType, ShaderInterfaceDef, ShaderInterfaceDefEntry, ShaderModule};
         use vulkano::descriptor::descriptor::ShaderStages;
