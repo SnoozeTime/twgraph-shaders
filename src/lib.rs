@@ -13,7 +13,7 @@ use std::fs::File;
 use std::io::Read;
 
 mod descriptor;
-use crate::descriptor::{generate_descriptor_layout, DescriptorInput, DescriptorType};
+use crate::descriptor::{generate_descriptor_layout, DescriptorInput};
 
 // TODO Whatever I use at the moment. Other to be implemented later :)
 #[derive(Debug, Clone, Copy)]

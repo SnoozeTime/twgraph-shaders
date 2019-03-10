@@ -4,6 +4,7 @@ use syn::parse::{Parse, ParseStream, Result};
 
 pub enum DescriptorType {
     Buffer(BufferData),
+    Image,
 }
 
 pub struct BufferData {
@@ -140,31 +141,31 @@ impl Parse for DescriptorInput {
 pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (proc_macro2::TokenStream, proc_macro2::TokenStream) {
     /*
      *fn num_sets(&self) -> usize {
-                1usize
-            }
-            fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-                match set {
-                    0usize => Some(1usize),
-                    _ => None,
-                }
-            }
-            fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-                match (set, binding) {
-                    (0usize, 0usize) => Some(DescriptorDesc {
-                        ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                            dynamic: Some(false),
-                            storage: false,
-                        }),
-                        array_count: 1u32,
-                        stages: self.0.clone(),
-                        readonly: true,
-                    }),
-                    _ => None,
-                }
-            }
+     1usize
+     }
+     fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+     match set {
+     0usize => Some(1usize),
+     _ => None,
+     }
+     }
+     fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+     match (set, binding) {
+     (0usize, 0usize) => Some(DescriptorDesc {
+     ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+     dynamic: Some(false),
+     storage: false,
+     }),
+     array_count: 1u32,
+     stages: self.0.clone(),
+     readonly: true,
+     }),
+     _ => None,
+     }
+     }
      *
      * */
-        
+
     // first let's order by set and binding.
     // I'm tired, don't judge.
     let mut bindings_per_set = HashMap::new();
@@ -176,15 +177,15 @@ pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (p
 
         bindings_per_set.get_mut(&desc.set).unwrap().insert(desc.binding);
     }
-    
+
     let num_set = bindings_per_set.len();
 
     let mut num_bindings = vec![];
     for (set, bindings) in &bindings_per_set {
-        
+
         let binding_length = bindings.len();
         num_bindings.push(quote!(
-            #set => Some(#binding_length),
+                #set => Some(#binding_length),
                 ));
     }
 
@@ -196,48 +197,87 @@ pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (p
         let binding = desc.binding;
         descriptor_desc.push(quote!(
 
-            (#set, #binding) => Some(DescriptorDesc {
-                ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
-                    dynamic: Some(false),
-                    storage: false,
+                (#set, #binding) => Some(DescriptorDesc {
+                    ty: DescriptorDescTy::Buffer(DescriptorBufferDesc {
+                        dynamic: Some(false),
+                        storage: false,
+                    }),
+                    array_count: 1u32,
+                    stages: self.0.clone(),
+                    readonly: true,
                 }),
-                array_count: 1u32,
-                stages: self.0.clone(),
-                readonly: true,
-            }),
-        ));
+                ));
 
         let name = &desc.name;
-        
-        descriptor_structs.push(quote!(
-                
-            pub struct #name {
-
+        let mut fields = vec![];
+        if let DescriptorType::Buffer(BufferData {data}) = &desc.ty {
+            for (field_name, field_ty) in data {
+               // ident and string.
+               match field_ty.as_ref() {
+                "vec2" => {
+                    fields.push(quote!(
+                        pub #field_name: [f32; 2],
+                    ));
+                },
+                "vec3" => {
+                    fields.push(quote!(
+                        pub #field_name: [f32; 3],
+                    ));
+                },
+                "vec4" => {
+                    fields.push(quote!(
+                        pub #field_name: [f32; 4],
+                    ));
+                },
+                "mat2" => {
+                    fields.push(quote!(
+                        pub #field_name: [[f32; 2]; 2],
+                    ));
+                },
+                "mat3" => {
+                    fields.push(quote!(
+                        pub #field_name: [[f32; 3]; 3],
+                    ));
+                },
+                "mat4" => {
+                    fields.push(quote!(
+                        pub #field_name: [[f32; 4]; 4],
+                    ));
+                },
+                x => panic!(format!("Uniform field type {} not supported yet", x)),
+               }
             }
+        }
 
+        descriptor_structs.push(quote!(
+                #[repr(C)]
+                #[derive(Debug, Clone, Copy)]
+                pub struct #name {
+                    #( #fields )*
+                }
         ));
     }
 
 
     (quote!(
-        
-        fn num_sets(&self) -> usize {
-            #num_set
-        }
 
-        fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
-            match set {
-                #( #num_bindings )*
-                _ => None,
+            fn num_sets(&self) -> usize {
+                #num_set
             }
-        }
 
-        fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
-            match (set, binding) {
-                #( #descriptor_desc )*
-                _ => None,
+            fn num_bindings_in_set(&self, set: usize) -> Option<usize> {
+                match set {
+                    #( #num_bindings )*
+                    _ => None,
+                }
             }
-        }
+
+            fn descriptor(&self, set: usize, binding: usize) -> Option<DescriptorDesc> {
+                match (set, binding) {
+                    #( #descriptor_desc )*
+                    _ => None,
+                }
+            }
     ), quote!(#( #descriptor_structs )*))
 }
 
