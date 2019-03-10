@@ -5,6 +5,7 @@ use syn::parse::{Parse, ParseStream, Result};
 pub enum DescriptorType {
     Buffer(BufferData),
     SampledImage,
+    InputAttachment,
 }
 
 pub struct BufferData {
@@ -126,6 +127,7 @@ impl Parse for DescriptorInput {
         let ty = match ty_str.expect("Could not find uniform type").to_string().as_ref() {
             "Buffer" => DescriptorType::Buffer(data.expect("Could not find uniform buffer data")),
             "SampledImage" => DescriptorType::SampledImage,
+            "InputAttachment" => DescriptorType::InputAttachment,
             _ => panic!("Descriptor type not supported"),
         };
 
@@ -200,6 +202,14 @@ pub fn generate_descriptor_layout(descriptor_inputs: Vec<DescriptorInput>) -> (p
                         multisampled: false,
                         array_layers: DescriptorImageDescArray::NonArrayed,
                     })
+                )
+            },
+            DescriptorType::InputAttachment => {
+                quote!(
+                    DescriptorDescTy::InputAttachment {
+                        multisampled: false,
+                        array_layers: DescriptorImageDescArray::NonArrayed,
+                    }
                 )
             },
         };
