@@ -26,7 +26,7 @@ mod vs {
         ],
         push_constants: {
             name: PushConstants,
-            ranges: [(color, 4), (color2, 4), (long_ass, 12), (color3, 4)],
+            ranges: [(color, 4), (color2, 4)]
         },
         descriptors: [
             {
@@ -38,7 +38,7 @@ mod vs {
             },
             {
                 name: Texture,
-                ty: SampledImage,
+                ty: InputAttachment,
                 binding: 0,
                 set: 2,
             }
