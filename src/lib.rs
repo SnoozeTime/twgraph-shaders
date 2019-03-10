@@ -420,7 +420,7 @@ pub fn twshader(input: TokenStream) -> TokenStream {
                 let spirv = compiler.compile_into_spirv(
                     content.as_str(),
                     shaderc::ShaderKind::#shaderc_type,
-                    #path, "main", None).unwrap();
+                    #path, "main", None)?;
 
                 let spirv = spirv.as_binary();
 
